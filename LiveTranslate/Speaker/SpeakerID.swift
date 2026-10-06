@@ -116,7 +116,6 @@ final class SpeakerTracker {
         queue.async { [weak self] in
             self?.pending.removeAll()
             self?.scores.removeAll()
-            try? self?.eagle?.reset()
         }
     }
 
