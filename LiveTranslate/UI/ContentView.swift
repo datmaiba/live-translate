@@ -30,14 +30,6 @@ struct ContentView: View {
                 SettingsView().environmentObject(translator)
             }
         }
-        .background(translationHost)
-    }
-
-    @ViewBuilder
-    private var translationHost: some View {
-        if #available(iOS 18.0, *) {
-            TranslationHost(bridge: translator.appleBridge)
-        }
     }
 
     // MARK: - Sections

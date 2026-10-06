@@ -5,7 +5,7 @@ App cá nhân, cài bằng AltStore (không qua App Store). Dịch hội thoại
 ## Tính năng
 
 - Nghe micro (iPhone hoặc AirPods) → nhận dạng giọng nói → dịch → đọc bản dịch vào tai nghe + hiện phụ đề.
-- Dịch offline bằng Apple Translation (iOS 18+), tự chuyển sang Google khi cần.
+- Bản v1 dịch online (Google), cần mạng. Bản offline (Apple Translation) để ở `Offline/`, sẽ bật ở v2.
 - **Chế độ ẩn:** chạy nền, bản dịch hiện trên thẻ phát nhạc ở màn hình khoá.
   - AirPods: bấm 1 lần = bật/tạm dừng · bấm 2 lần = đổi chiều dịch.
   - Gõ 2 lần mặt lưng iPhone (Back Tap) = bật/tạm dừng.

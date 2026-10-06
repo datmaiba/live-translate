@@ -4,8 +4,6 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var translator: LiveTranslator
     @Environment(\.dismiss) private var dismiss
-    @State private var packStatus = "Đang kiểm tra…"
-    @State private var downloading = false
 
     var body: some View {
         NavigationStack {
@@ -27,7 +25,6 @@ struct SettingsView: View {
                     Button("Xong") { dismiss() }
                 }
             }
-            .task { await refreshPackStatus() }
         }
     }
 
@@ -54,27 +51,11 @@ struct SettingsView: View {
 
     private var translationSection: some View {
         Section {
-            Picker("Bộ dịch", selection: $translator.engine) {
-                ForEach(LiveTranslator.Engine.allCases) { engine in
-                    Text(engine.label).tag(engine)
-                }
-            }
-            .pickerStyle(.inline)
-            .labelsHidden()
-            if #available(iOS 18.0, *) {
-                LabeledContent("Gói offline Việt ⇄ Anh", value: packStatus)
-                Button(downloading ? "Đang tải…" : "Tải gói dịch offline") {
-                    Task { await downloadPacks() }
-                }
-                .disabled(downloading)
-            } else {
-                Text("Dịch offline cần iOS 18 trở lên — đang dùng Google.")
-                    .foregroundStyle(.secondary)
-            }
+            LabeledContent("Bộ dịch", value: "Google (online)")
         } header: {
             Text("Dịch")
         } footer: {
-            Text("Apple dịch offline, miễn phí, riêng tư. Nếu Apple chưa sẵn sàng hoặc lỗi, chế độ Tự động chuyển sang Google (cần mạng).")
+            Text("Bản này cần mạng. Bản dịch offline sẽ có ở phiên bản sau.")
         }
     }
 
@@ -97,24 +78,5 @@ struct SettingsView: View {
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
         return "\(version) (\(build))"
-    }
-
-    private func refreshPackStatus() async {
-        if #available(iOS 18.0, *) {
-            packStatus = await translator.appleBridge.statusText()
-        }
-    }
-
-    private func downloadPacks() async {
-        guard #available(iOS 18.0, *) else { return }
-        downloading = true
-        defer { downloading = false }
-        do {
-            try await translator.appleBridge.prepare(direction: .viToEn)
-            try await translator.appleBridge.prepare(direction: .enToVi)
-        } catch {
-            translator.errorMessage = "Tải gói offline lỗi: \(error.localizedDescription)"
-        }
-        await refreshPackStatus()
     }
 }

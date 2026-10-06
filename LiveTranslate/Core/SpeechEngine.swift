@@ -191,9 +191,8 @@ final class SpeechEngine {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.addsPunctuation = true
-        if recognizer.supportsOnDeviceRecognition {
-            request.requiresOnDeviceRecognition = true
-        }
+        // Online-first: Apple's server recognizer is more accurate for Vietnamese.
+        request.requiresOnDeviceRecognition = false
         tap.setRequest(request)
         latestText = ""
         segmentStart = Date()

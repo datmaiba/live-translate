@@ -14,21 +14,6 @@ final class LiveTranslator: ObservableObject {
         case paused
     }
 
-    enum Engine: String, CaseIterable, Identifiable {
-        case auto
-        case apple
-        case google
-
-        var id: String { rawValue }
-        var label: String {
-            switch self {
-            case .auto: return "Tự động (Apple offline → Google)"
-            case .apple: return "Chỉ Apple (offline)"
-            case .google: return "Chỉ Google (cần mạng)"
-            }
-        }
-    }
-
     struct Line: Identifiable, Equatable {
         let id = UUID()
         let direction: Direction
@@ -52,7 +37,6 @@ final class LiveTranslator: ObservableObject {
     @Published var muteWhileSpeaking: Bool { didSet { defaults.set(muteWhileSpeaking, forKey: Keys.mute) } }
     @Published var saveHistory: Bool { didSet { defaults.set(saveHistory, forKey: Keys.history) } }
     @Published var speechRate: Double { didSet { defaults.set(speechRate, forKey: Keys.rate) } }
-    @Published var engine: Engine { didSet { defaults.set(engine.rawValue, forKey: Keys.engine) } }
 
     let history = HistoryStore()
 
@@ -62,7 +46,6 @@ final class LiveTranslator: ObservableObject {
         static let mute = "muteWhileSpeaking"
         static let history = "saveHistory"
         static let rate = "speechRate"
-        static let engine = "engine"
     }
 
     private let defaults = UserDefaults.standard
@@ -71,13 +54,6 @@ final class LiveTranslator: ObservableObject {
     private let nowPlaying = NowPlayingController()
     private let google = GoogleTranslator()
     private let inbox: AsyncStream<(String, Direction)>.Continuation
-    private var appleBridgeStorage: AnyObject?
-
-    @available(iOS 18.0, *)
-    var appleBridge: AppleTranslationBridge {
-        // swiftlint:disable:next force_cast
-        appleBridgeStorage as! AppleTranslationBridge
-    }
 
     private init() {
         defaults.register(defaults: [
@@ -85,21 +61,16 @@ final class LiveTranslator: ObservableObject {
             Keys.speak: true,
             Keys.mute: true,
             Keys.history: true,
-            Keys.rate: Double(AVSpeechUtteranceDefaultSpeechRate),
-            Keys.engine: Engine.auto.rawValue
+            Keys.rate: Double(AVSpeechUtteranceDefaultSpeechRate)
         ])
         direction = Direction(source: Lang(rawValue: defaults.string(forKey: Keys.direction) ?? "") ?? .en)
         speakOutput = defaults.bool(forKey: Keys.speak)
         muteWhileSpeaking = defaults.bool(forKey: Keys.mute)
         saveHistory = defaults.bool(forKey: Keys.history)
         speechRate = defaults.double(forKey: Keys.rate)
-        engine = Engine(rawValue: defaults.string(forKey: Keys.engine) ?? "") ?? .auto
 
         let (stream, inbox) = AsyncStream<(String, Direction)>.makeStream()
         self.inbox = inbox
-        if #available(iOS 18.0, *) {
-            appleBridgeStorage = AppleTranslationBridge()
-        }
 
         speech.onPartial = { [weak self] text in self?.partial = text }
         speech.onUtterance = { [weak self] text in
@@ -229,15 +200,13 @@ final class LiveTranslator: ObservableObject {
         }
     }
 
-    private func translate(_ text: String, direction: Direction) async throws -> (String, String) {
-        if engine != .google, #available(iOS 18.0, *) {
-            do {
-                return (try await appleBridge.translate(text, direction: direction), "Apple")
-            } catch {
-                if engine == .apple { throw error }
-            }
+    private func translate(_ text: String, direction: Direction) async throws -> (text: String, engine: String) {
+        do {
+            return (try await google.translate(text, direction: direction), "Google")
+        } catch {
+            try await Task.sleep(nanoseconds: 400_000_000)
+            return (try await google.translate(text, direction: direction), "Google")
         }
-        return (try await google.translate(text, direction: direction), "Google")
     }
 
     private func update(_ id: UUID, translation: String, engine: String) {
