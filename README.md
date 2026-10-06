@@ -4,12 +4,22 @@ App cá nhân, cài bằng AltStore (không qua App Store). Dịch hội thoại
 
 ## Tính năng
 
-- Nghe micro (iPhone hoặc AirPods) → nhận dạng giọng nói → dịch → đọc bản dịch vào tai nghe + hiện phụ đề.
-- Bản v1 dịch online (Google), cần mạng. Bản offline (Apple Translation) để ở `Offline/`, sẽ bật ở v2.
-- **Chế độ ẩn:** chạy nền, bản dịch hiện trên thẻ phát nhạc ở màn hình khoá.
-  - AirPods: bấm 1 lần = bật/tạm dừng · bấm 2 lần = đổi chiều dịch.
+- **Hội thoại tự động** (nhận diện giọng bạn bằng Picovoice Eagle):
+  - Bạn nói **tiếng Anh** → app im lặng.
+  - Bạn nói **tiếng Việt** → dịch sang tiếng Anh đơn giản (Claude) và **phát ra loa** cho người đối diện.
+  - Người khác nói **tiếng Anh** → dịch tiếng Việt **cho riêng bạn** (tai nghe / áp tai / chỉ chữ) + Claude **gợi ý 3 câu trả lời**, chạm để app đọc to.
+- Không đeo tai nghe vẫn dùng được: chế độ "Áp tai" phát bản dịch qua loa thoại như nghe điện thoại.
+- Online: Apple Speech (máy chủ) + Google Translate; Claude nếu có API key. Bản offline để ở `Offline/`.
+- **Chế độ ẩn:** chạy nền, câu dịch hiện trên thẻ phát nhạc ở màn hình khoá.
+  - AirPods: bấm 1 lần = bật/tạm dừng · bấm 2 lần = đọc lại câu dịch.
   - Gõ 2 lần mặt lưng iPhone (Back Tap) = bật/tạm dừng.
 - Lịch sử lưu trên máy, xoá từng dòng (vuốt) hoặc xoá hết.
+
+## Thiết lập lần đầu (trong app › ⚙️)
+
+1. **Picovoice AccessKey**: đăng ký tại https://console.picovoice.ai → copy AccessKey → dán vào ô "Picovoice AccessKey".
+2. Bấm **Đăng ký giọng của tôi**, đọc to đoạn văn mẫu tới 100% (chỗ yên tĩnh).
+3. **Claude API key** (tuỳ chọn, để có tiếng Anh đơn giản + gợi ý trả lời): https://console.anthropic.com → API Keys → dán vào ô "Claude API key". Tính phí theo lượng dùng.
 
 ## Build
 

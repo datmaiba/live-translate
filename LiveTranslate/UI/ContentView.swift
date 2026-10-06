@@ -8,7 +8,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                directionBar
+                statusBar
                 transcript
                 controls
             }
@@ -26,7 +26,7 @@ struct ContentView: View {
             .sheet(isPresented: $showHistory) {
                 HistoryView(history: translator.history)
             }
-            .sheet(isPresented: $showSettings) {
+            .sheet(isPresented: $showSettings, onDismiss: { translator.reloadSpeakerID() }) {
                 SettingsView().environmentObject(translator)
             }
         }
@@ -34,49 +34,37 @@ struct ContentView: View {
 
     // MARK: - Sections
 
-    private var directionBar: some View {
+    private var statusBar: some View {
         Button {
-            translator.swapDirection()
+            showSettings = true
         } label: {
-            HStack(spacing: 14) {
-                langChip(translator.direction.source)
-                Image(systemName: "arrow.left.arrow.right")
-                    .font(.headline)
-                    .foregroundStyle(Theme.accent)
-                langChip(translator.direction.target)
-            }
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity)
+            Text(translator.speakerStatus)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
         }
         .buttonStyle(.plain)
         .background(Theme.surface)
     }
 
-    private func langChip(_ lang: Lang) -> some View {
-        HStack(spacing: 6) {
-            Text(lang.flag)
-            Text(lang.name).font(.subheadline.weight(.semibold))
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(Capsule().fill(Theme.chip))
-    }
-
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 18) {
+                LazyVStack(alignment: .leading, spacing: 16) {
                     if translator.lines.isEmpty && translator.partial.isEmpty {
                         emptyState
                     }
                     ForEach(translator.lines) { line in
-                        LineView(line: line).id(line.id)
+                        LineView(line: line) { translator.say($0) }
+                            .id(line.id)
                     }
                     if !translator.partial.isEmpty {
                         Text(translator.partial)
                             .font(.body.italic())
                             .foregroundStyle(.secondary)
-                            .id("partial")
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
@@ -96,10 +84,11 @@ struct ContentView: View {
             Text("Bấm nút micro để bắt đầu.")
                 .font(.headline)
             Text("""
-            • Khoá màn hình hoặc mở app khác vẫn dịch tiếp.
-            • Bản dịch hiện trên màn hình khoá và đọc vào tai nghe.
-            • AirPods: bấm 1 lần = bật/tạm dừng, bấm 2 lần = đổi chiều.
-            • Gõ 2 lần mặt lưng iPhone để bật/tắt (cài trong ⚙️).
+            • Bạn nói tiếng Việt → app nói tiếng Anh ra loa cho người nghe.
+            • Bạn nói tiếng Anh → app im lặng.
+            • Người khác nói tiếng Anh → app dịch tiếng Việt cho riêng bạn + gợi ý câu trả lời. Chạm gợi ý để app đọc to.
+            • Khoá màn hình / mở app khác vẫn chạy. AirPods: bấm 1 lần = bật/tạm dừng, 2 lần = đọc lại.
+            • Lần đầu: vào ⚙️ đăng ký giọng của bạn để app phân biệt bạn với người khác.
             """)
             .font(.subheadline)
             .foregroundStyle(.secondary)
@@ -115,6 +104,7 @@ struct ContentView: View {
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
+                    .onTapGesture { translator.errorMessage = nil }
             }
             HStack(spacing: 28) {
                 Button {
@@ -170,7 +160,7 @@ struct ContentView: View {
     private var statusText: String {
         switch translator.state {
         case .idle: return "Chưa bật"
-        case .listening: return "Đang nghe \(translator.direction.source.name)…"
+        case .listening: return "Đang nghe…"
         case .paused: return "Tạm dừng — micro vẫn giữ để bật lại nhanh"
         }
     }
@@ -178,23 +168,54 @@ struct ContentView: View {
 
 private struct LineView: View {
     let line: LiveTranslator.Line
+    let onSay: (ReplySuggestion) -> Void
+
+    private var isMe: Bool { line.speaker == .me }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: isMe ? .trailing : .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(isMe ? "🧑 Bạn" : "🗣 Người khác")
+                Text(line.language.shortLabel)
+                if !line.note.isEmpty { Text("· \(line.note)") }
+            }
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+
             Text(line.source)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Text(line.translation)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.primary)
-            if !line.engine.isEmpty {
-                Text(line.engine)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                .font(line.translation.isEmpty ? .body : .subheadline)
+                .foregroundStyle(line.translation.isEmpty ? .primary : .secondary)
+
+            if !line.translation.isEmpty {
+                Text(line.translation)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(isMe ? Theme.accent : .primary)
+            }
+
+            if line.loadingSuggestions {
+                ProgressView().controlSize(.small)
+            }
+            ForEach(line.suggestions, id: \.self) { suggestion in
+                Button {
+                    onSay(suggestion)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Label(suggestion.en, systemImage: "speaker.wave.2.fill")
+                            .font(.callout.weight(.semibold))
+                        Text(suggestion.vi)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Theme.chip))
+                }
+                .buttonStyle(.plain)
             }
         }
         .textSelection(.enabled)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: isMe ? .trailing : .leading)
+        .multilineTextAlignment(isMe ? .trailing : .leading)
     }
 }
 

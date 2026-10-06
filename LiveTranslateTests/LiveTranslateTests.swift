@@ -92,3 +92,106 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertTrue(HistoryStore(fileURL: fileURL).entries.isEmpty)
     }
 }
+
+final class LanguageHeuristicsTests: XCTestCase {
+    func testVietnameseRatio() {
+        XCTAssertGreaterThan(LanguageHeuristics.vietnameseRatio("Tôi muốn hỏi đường đến khách sạn"), 0.2)
+        XCTAssertEqual(LanguageHeuristics.vietnameseRatio("Where is the hotel"), 0)
+        XCTAssertEqual(LanguageHeuristics.vietnameseRatio(""), 0)
+    }
+
+    func testDetectVietnamese() {
+        let heard = HeardUtterance(vietnamese: "Cảm ơn bạn rất nhiều", english: "Come on bun rat new", ownerScore: nil)
+        XCTAssertEqual(LanguageHeuristics.detect(heard), .vi)
+    }
+
+    func testDetectEnglish() {
+        let heard = HeardUtterance(vietnamese: "where is the station", english: "Where is the station?", ownerScore: nil)
+        XCTAssertEqual(LanguageHeuristics.detect(heard), .en)
+    }
+
+    func testDetectNothing() {
+        XCTAssertNil(LanguageHeuristics.detect(HeardUtterance(vietnamese: " ", english: "", ownerScore: nil)))
+    }
+}
+
+final class TurnRouterTests: XCTestCase {
+    private let vietnamese = "Tôi muốn đặt một bàn cho hai người"
+    private let english = "How many people are in your party?"
+
+    func testOwnerSpeakingVietnameseIsSpokenForOthers() {
+        let heard = HeardUtterance(vietnamese: vietnamese, english: "toy moon dat", ownerScore: 0.9)
+        XCTAssertEqual(TurnRouter.route(heard, ownerThreshold: 0.5), .speakForMe(vietnamese: vietnamese))
+    }
+
+    func testOwnerSpeakingEnglishIsIgnored() {
+        let heard = HeardUtterance(vietnamese: "how many people", english: english, ownerScore: 0.8)
+        guard case .ignore(_, _, let speaker, let language) = TurnRouter.route(heard, ownerThreshold: 0.5) else {
+            return XCTFail("expected ignore")
+        }
+        XCTAssertEqual(speaker, .me)
+        XCTAssertEqual(language, .en)
+    }
+
+    func testOtherSpeakingEnglishIsTranslatedForOwner() {
+        let heard = HeardUtterance(vietnamese: "how many people", english: english, ownerScore: 0.1)
+        XCTAssertEqual(TurnRouter.route(heard, ownerThreshold: 0.5), .translateForMe(english: english))
+    }
+
+    func testOtherSpeakingVietnameseIsIgnored() {
+        let heard = HeardUtterance(vietnamese: vietnamese, english: "toy moon", ownerScore: 0.1)
+        guard case .ignore(_, _, let speaker, let language) = TurnRouter.route(heard, ownerThreshold: 0.5) else {
+            return XCTFail("expected ignore")
+        }
+        XCTAssertEqual(speaker, .other)
+        XCTAssertEqual(language, .vi)
+    }
+
+    func testWithoutVoiceProfileFallsBackToLanguage() {
+        let vi = HeardUtterance(vietnamese: vietnamese, english: "toy", ownerScore: nil)
+        XCTAssertEqual(TurnRouter.route(vi, ownerThreshold: 0.5), .speakForMe(vietnamese: vietnamese))
+        let en = HeardUtterance(vietnamese: "how many", english: english, ownerScore: nil)
+        XCTAssertEqual(TurnRouter.route(en, ownerThreshold: 0.5), .translateForMe(english: english))
+    }
+}
+
+final class ClaudePromptsTests: XCTestCase {
+    func testParsesSuggestionsInsideProse() {
+        let text = """
+        Here you go:
+        [{"en": "Yes, please.", "vi": "Vâng, làm ơn."}, {"en": "Can you say that again?", "vi": "Bạn nói lại được không?"},
+         {"en": "Thank you!", "vi": "Cảm ơn!"}, {"en": "Extra", "vi": "Thừa"}]
+        """
+        let suggestions = ClaudePrompts.parseSuggestions(text)
+        XCTAssertEqual(suggestions.count, 3)
+        XCTAssertEqual(suggestions.first, ReplySuggestion(en: "Yes, please.", vi: "Vâng, làm ơn."))
+    }
+
+    func testBadSuggestionsReturnEmpty() {
+        XCTAssertTrue(ClaudePrompts.parseSuggestions("no json here").isEmpty)
+        XCTAssertTrue(ClaudePrompts.parseSuggestions("[{\"oops\": 1}]").isEmpty)
+    }
+
+    func testParseTextJoinsTextBlocks() throws {
+        let json = #"{"content":[{"type":"text","text":"Hello, "},{"type":"text","text":"nice to meet you."}]}"#
+        XCTAssertEqual(try ClaudePrompts.parseText(Data(json.utf8)), "Hello, nice to meet you.")
+    }
+
+    func testRequestBody() {
+        let body = ClaudePrompts.requestBody(model: .haiku, system: "sys", user: "hi", maxTokens: 100)
+        XCTAssertEqual(body["model"] as? String, "claude-haiku-4-5-20251001")
+        XCTAssertEqual(body["max_tokens"] as? Int, 100)
+        let messages = body["messages"] as? [[String: String]]
+        XCTAssertEqual(messages?.first?["role"], "user")
+        XCTAssertEqual(messages?.first?["content"], "hi")
+    }
+
+    func testInterpretMessageIncludesContext() {
+        let message = ClaudePrompts.interpretUserMessage(
+            vietnamese: "Bao nhiêu tiền?",
+            context: [ConversationTurn(speaker: .other, text: "This one is nice.")]
+        )
+        XCTAssertTrue(message.contains("Other: This one is nice."))
+        XCTAssertTrue(message.hasSuffix("Dat says (Vietnamese): Bao nhiêu tiền?"))
+    }
+}

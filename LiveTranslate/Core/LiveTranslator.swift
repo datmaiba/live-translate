@@ -3,7 +3,11 @@ import AudioToolbox
 import Foundation
 import Speech
 
-/// Orchestrates mic → speech-to-text → translation → TTS / lock screen.
+/// Orchestrates mic → (VI + EN speech-to-text, owner voice score) → routing → translation → voice.
+///
+/// - Owner speaks English → ignored.
+/// - Owner speaks Vietnamese → simple English (Claude, Google fallback) played on the loudspeaker.
+/// - Someone else speaks English → Vietnamese for the owner only + Claude reply suggestions.
 @MainActor
 final class LiveTranslator: ObservableObject {
     static let shared = LiveTranslator()
@@ -16,81 +20,124 @@ final class LiveTranslator: ObservableObject {
 
     struct Line: Identifiable, Equatable {
         let id = UUID()
-        let direction: Direction
+        let speaker: Speaker
+        let language: Lang
         let source: String
         var translation: String
-        var engine: String
+        var note: String
+        var suggestions: [ReplySuggestion] = []
+        var loadingSuggestions = false
     }
 
     @Published private(set) var state: State = .idle
     @Published private(set) var partial = ""
     @Published private(set) var lines: [Line] = []
+    @Published private(set) var speakerStatus = ""
     @Published var errorMessage: String?
 
-    @Published var direction: Direction {
-        didSet {
-            defaults.set(direction.source.rawValue, forKey: Keys.direction)
-            directionChanged()
-        }
-    }
-    @Published var speakOutput: Bool { didSet { defaults.set(speakOutput, forKey: Keys.speak) } }
+    @Published var speakForOthers: Bool { didSet { defaults.set(speakForOthers, forKey: Keys.speakForOthers) } }
+    @Published var speakForMe: Bool { didSet { defaults.set(speakForMe, forKey: Keys.speakForMe) } }
     @Published var muteWhileSpeaking: Bool { didSet { defaults.set(muteWhileSpeaking, forKey: Keys.mute) } }
     @Published var saveHistory: Bool { didSet { defaults.set(saveHistory, forKey: Keys.history) } }
+    @Published var suggestReplies: Bool { didSet { defaults.set(suggestReplies, forKey: Keys.suggest) } }
     @Published var speechRate: Double { didSet { defaults.set(speechRate, forKey: Keys.rate) } }
+    @Published var ownerThreshold: Double { didSet { defaults.set(ownerThreshold, forKey: Keys.threshold) } }
+    @Published var privateOutput: PrivateOutput {
+        didSet {
+            defaults.set(privateOutput.rawValue, forKey: Keys.privateOutput)
+            voice.privateOutput = privateOutput
+        }
+    }
+    @Published var claudeModel: ClaudeModel { didSet { defaults.set(claudeModel.rawValue, forKey: Keys.model) } }
+    @Published var claudeKey: String {
+        didSet { KeychainStore.set(claudeKey.trimmingCharacters(in: .whitespacesAndNewlines), for: Keys.claudeKey) }
+    }
+    @Published var picovoiceKey: String {
+        didSet {
+            KeychainStore.set(picovoiceKey.trimmingCharacters(in: .whitespacesAndNewlines), for: Keys.picovoiceKey)
+        }
+    }
 
     let history = HistoryStore()
 
     private enum Keys {
-        static let direction = "direction"
-        static let speak = "speakOutput"
+        static let speakForOthers = "speakForOthers"
+        static let speakForMe = "speakForMe"
         static let mute = "muteWhileSpeaking"
         static let history = "saveHistory"
+        static let suggest = "suggestReplies"
         static let rate = "speechRate"
+        static let threshold = "ownerThreshold"
+        static let privateOutput = "privateOutput"
+        static let model = "claudeModel"
+        static let claudeKey = "claudeApiKey"
+        static let picovoiceKey = "picovoiceAccessKey"
     }
 
     private let defaults = UserDefaults.standard
     private let speech = SpeechEngine()
-    private let speaker = Speaker()
+    private let voice = VoiceOutput()
     private let nowPlaying = NowPlayingController()
     private let google = GoogleTranslator()
-    private let inbox: AsyncStream<(String, Direction)>.Continuation
+    private let inbox: AsyncStream<HeardUtterance>.Continuation
+
+    private var claude: ClaudeClient {
+        ClaudeClient(apiKey: claudeKey.trimmingCharacters(in: .whitespacesAndNewlines), model: claudeModel)
+    }
+
+    var hasVoiceProfile: Bool { VoiceProfileStore.exists }
 
     private init() {
         defaults.register(defaults: [
-            Keys.direction: Lang.en.rawValue,
-            Keys.speak: true,
+            Keys.speakForOthers: true,
+            Keys.speakForMe: true,
             Keys.mute: true,
             Keys.history: true,
-            Keys.rate: Double(AVSpeechUtteranceDefaultSpeechRate)
+            Keys.suggest: true,
+            Keys.rate: Double(AVSpeechUtteranceDefaultSpeechRate),
+            Keys.threshold: 0.5,
+            Keys.privateOutput: PrivateOutput.earpiece.rawValue,
+            Keys.model: ClaudeModel.haiku.rawValue
         ])
-        direction = Direction(source: Lang(rawValue: defaults.string(forKey: Keys.direction) ?? "") ?? .en)
-        speakOutput = defaults.bool(forKey: Keys.speak)
+        speakForOthers = defaults.bool(forKey: Keys.speakForOthers)
+        speakForMe = defaults.bool(forKey: Keys.speakForMe)
         muteWhileSpeaking = defaults.bool(forKey: Keys.mute)
         saveHistory = defaults.bool(forKey: Keys.history)
+        suggestReplies = defaults.bool(forKey: Keys.suggest)
         speechRate = defaults.double(forKey: Keys.rate)
+        ownerThreshold = defaults.double(forKey: Keys.threshold)
+        privateOutput = PrivateOutput(rawValue: defaults.string(forKey: Keys.privateOutput) ?? "") ?? .earpiece
+        claudeModel = ClaudeModel(rawValue: defaults.string(forKey: Keys.model) ?? "") ?? .haiku
+        claudeKey = KeychainStore.get(Keys.claudeKey) ?? ""
+        picovoiceKey = KeychainStore.get(Keys.picovoiceKey) ?? ""
 
-        let (stream, inbox) = AsyncStream<(String, Direction)>.makeStream()
+        let (stream, inbox) = AsyncStream<HeardUtterance>.makeStream()
         self.inbox = inbox
+        voice.privateOutput = privateOutput
 
         speech.onPartial = { [weak self] text in self?.partial = text }
-        speech.onUtterance = { [weak self] text in
-            guard let self else { return }
-            self.partial = ""
-            self.inbox.yield((text, self.direction))
+        speech.onUtterance = { [weak self] heard in
+            self?.partial = ""
+            self?.inbox.yield(heard)
         }
         speech.onError = { [weak self] message in self?.errorMessage = message }
-        speaker.onFinishAll = { [weak self] in
+        voice.onStart = { [weak self] audience in
+            guard let self else { return }
+            if audience == .loud || self.muteWhileSpeaking { self.speech.setListening(false) }
+        }
+        voice.onFinishAll = { [weak self] in
             guard let self, self.state == .listening else { return }
             self.speech.setListening(true)
         }
         nowPlaying.configure(
             onToggle: { [weak self] in self?.toggle() },
-            onSwap: { [weak self] in self?.swapDirection() }
+            onSwap: { [weak self] in self?.repeatLast() }
         )
+        reloadSpeakerID()
 
         Task { [weak self] in
-            for await (text, direction) in stream {
-                await self?.process(text, direction: direction)
+            for await heard in stream {
+                await self?.process(heard)
             }
         }
     }
@@ -108,7 +155,8 @@ final class LiveTranslator: ObservableObject {
             return
         }
         do {
-            try speech.start(locale: direction.source.locale)
+            reloadSpeakerID()
+            try speech.start()
             state = .listening
             errorMessage = nil
             AudioServicesPlaySystemSound(1113)
@@ -121,7 +169,7 @@ final class LiveTranslator: ObservableObject {
     func pause() {
         guard state == .listening else { return }
         speech.setListening(false)
-        speaker.stop()
+        voice.stop()
         state = .paused
         partial = ""
         AudioServicesPlaySystemSound(1114)
@@ -131,7 +179,7 @@ final class LiveTranslator: ObservableObject {
     func resume() {
         guard state == .paused else { return }
         state = .listening
-        speech.setListening(!speaker.isSpeaking)
+        speech.setListening(!voice.isSpeaking)
         AudioServicesPlaySystemSound(1113)
         refreshNowPlaying()
     }
@@ -146,82 +194,158 @@ final class LiveTranslator: ObservableObject {
 
     func stopCompletely() {
         speech.stop()
-        speaker.stop()
+        voice.stop()
         state = .idle
         partial = ""
         nowPlaying.clear()
-    }
-
-    func swapDirection() {
-        direction = direction.swapped()
     }
 
     func clearScreen() {
         lines.removeAll()
     }
 
+    /// Plays the last translation again (AirPods double press / Shortcut).
+    func repeatLast() {
+        guard let line = lines.last(where: { !$0.translation.isEmpty && $0.translation != "…" }) else { return }
+        switch (line.speaker, line.language) {
+        case (.me, .vi):
+            voice.speak(line.translation, language: .en, rate: Float(speechRate), audience: .loud)
+        case (.other, .en):
+            voice.speak(line.translation, language: .vi, rate: Float(speechRate), audience: .private)
+        default:
+            break
+        }
+    }
+
+    /// Owner taps a suggested reply → read it aloud for the other person.
+    func say(_ suggestion: ReplySuggestion) {
+        voice.speak(suggestion.en, language: .en, rate: Float(speechRate), audience: .loud)
+        append(Line(speaker: .me, language: .en, source: suggestion.en, translation: suggestion.vi, note: "Đã phát gợi ý"))
+    }
+
+    /// Re-reads keys/profile and (re)starts Eagle.
+    func reloadSpeakerID() {
+        if let problem = speech.speakerTracker.configure(accessKey: picovoiceKey.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            speakerStatus = "⚠️ \(problem) — đang đoán theo ngôn ngữ"
+        } else {
+            speakerStatus = "✅ Đang nhận diện giọng của bạn"
+        }
+    }
+
+    func deleteVoiceProfile() {
+        VoiceProfileStore.delete()
+        reloadSpeakerID()
+    }
+
     // MARK: - Pipeline
 
-    private func directionChanged() {
-        partial = ""
-        if state != .idle {
+    private func process(_ heard: HeardUtterance) async {
+        switch TurnRouter.route(heard, ownerThreshold: Float(ownerThreshold)) {
+        case let .ignore(reason, text, speaker, language):
+            append(Line(speaker: speaker, language: language, source: text, translation: "", note: reason))
+
+        case .speakForMe(let vietnamese):
+            let id = append(Line(speaker: .me, language: .vi, source: vietnamese, translation: "…", note: ""))
+            let (english, engine) = await interpretForOthers(vietnamese)
+            guard let english else {
+                update(id) { $0.translation = ""; $0.note = "⚠️ \(engine)" }
+                return
+            }
+            update(id) { $0.translation = english; $0.note = engine }
+            if saveHistory { history.add(direction: .viToEn, source: vietnamese, translation: english) }
+            if speakForOthers && state == .listening {
+                voice.speak(english, language: .en, rate: Float(speechRate), audience: .loud)
+            }
+            refreshNowPlaying(title: english, subtitle: "🗣 Bạn: \(vietnamese)")
+
+        case .translateForMe(let english):
+            let id = append(Line(speaker: .other, language: .en, source: english, translation: "…", note: ""))
             do {
-                try speech.setLocale(direction.source.locale)
+                let vietnamese = try await translateWithRetry(english, direction: .enToVi)
+                update(id) { $0.translation = vietnamese; $0.note = "Google" }
+                if saveHistory { history.add(direction: .enToVi, source: english, translation: vietnamese) }
+                if speakForMe && state == .listening {
+                    voice.speak(vietnamese, language: .vi, rate: Float(speechRate), audience: .private)
+                }
+                refreshNowPlaying(title: vietnamese, subtitle: "👂 \(english)")
+            } catch {
+                update(id) { $0.translation = ""; $0.note = "⚠️ \(error.localizedDescription)" }
+            }
+            if suggestReplies && claude.isConfigured {
+                Task { await loadSuggestions(for: id) }
+            }
+        }
+    }
+
+    /// Vietnamese → simple spoken English. Claude when configured, Google otherwise / on failure.
+    private func interpretForOthers(_ vietnamese: String) async -> (String?, String) {
+        if claude.isConfigured {
+            do {
+                return (try await claude.interpret(vietnamese: vietnamese, context: context()), "Claude")
             } catch {
                 errorMessage = error.localizedDescription
             }
         }
-        refreshNowPlaying()
-    }
-
-    private func process(_ text: String, direction: Direction) async {
-        let line = Line(direction: direction, source: text, translation: "…", engine: "")
-        lines.append(line)
-        if lines.count > 200 { lines.removeFirst(lines.count - 200) }
-
-        let result: (text: String, engine: String)
         do {
-            result = try await translate(text, direction: direction)
+            return (try await translateWithRetry(vietnamese, direction: .viToEn), "Google")
         } catch {
-            update(line.id, translation: "⚠️ \(error.localizedDescription)", engine: "")
-            return
-        }
-        let translated = result.text
-        update(line.id, translation: translated, engine: result.engine)
-
-        if saveHistory {
-            history.add(direction: direction, source: text, translation: translated)
-        }
-        refreshNowPlaying(title: translated, subtitle: text)
-
-        if speakOutput && state == .listening {
-            if muteWhileSpeaking { speech.setListening(false) }
-            speaker.speak(translated, language: direction.target, rate: Float(speechRate))
+            return (nil, error.localizedDescription)
         }
     }
 
-    private func translate(_ text: String, direction: Direction) async throws -> (text: String, engine: String) {
+    private func loadSuggestions(for id: UUID) async {
+        update(id) { $0.loadingSuggestions = true }
         do {
-            return (try await google.translate(text, direction: direction), "Google")
+            let suggestions = try await claude.suggestReplies(context: context())
+            update(id) { $0.suggestions = suggestions; $0.loadingSuggestions = false }
+        } catch {
+            update(id) { $0.loadingSuggestions = false }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func translateWithRetry(_ text: String, direction: Direction) async throws -> String {
+        do {
+            return try await google.translate(text, direction: direction)
         } catch {
             try await Task.sleep(nanoseconds: 400_000_000)
-            return (try await google.translate(text, direction: direction), "Google")
+            return try await google.translate(text, direction: direction)
         }
     }
 
-    private func update(_ id: UUID, translation: String, engine: String) {
+    /// Recent conversation in English for Claude.
+    private func context(limit: Int = 10) -> [ConversationTurn] {
+        lines.suffix(limit).compactMap { line in
+            switch (line.speaker, line.language) {
+            case (.me, .vi):
+                let english = line.translation
+                return english.isEmpty || english == "…" ? nil : ConversationTurn(speaker: .me, text: english)
+            case (_, .en):
+                return ConversationTurn(speaker: line.speaker, text: line.source)
+            default:
+                return nil
+            }
+        }
+    }
+
+    @discardableResult
+    private func append(_ line: Line) -> UUID {
+        lines.append(line)
+        if lines.count > 200 { lines.removeFirst(lines.count - 200) }
+        return line.id
+    }
+
+    private func update(_ id: UUID, _ change: (inout Line) -> Void) {
         guard let index = lines.firstIndex(where: { $0.id == id }) else { return }
-        lines[index].translation = translation
-        lines[index].engine = engine
+        change(&lines[index])
     }
 
     private func refreshNowPlaying(title: String? = nil, subtitle: String? = nil) {
         guard state != .idle else { return }
         let status = state == .listening ? "🎙 Đang nghe" : "⏸ Tạm dừng"
-        let last = lines.last
         nowPlaying.update(
-            title: title ?? last?.translation ?? "\(status) \(direction.label)",
-            subtitle: "\(status) · \(direction.label)" + ((subtitle ?? last?.source).map { " · \($0)" } ?? ""),
+            title: title ?? status,
+            subtitle: subtitle.map { "\(status) · \($0)" } ?? "Live Dịch",
             isListening: state == .listening
         )
     }

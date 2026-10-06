@@ -27,14 +27,14 @@ struct ToggleListeningIntent: AppIntent {
     }
 }
 
-struct SwapDirectionIntent: AppIntent {
-    static var title: LocalizedStringResource = "Đổi chiều dịch"
-    static var description = IntentDescription("Đổi giữa Việt → Anh và Anh → Việt.")
+struct RepeatLastIntent: AppIntent {
+    static var title: LocalizedStringResource = "Đọc lại câu dịch"
+    static var description = IntentDescription("Phát lại câu dịch gần nhất.")
     static var openAppWhenRun: Bool = false
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        LiveTranslator.shared.swapDirection()
+        LiveTranslator.shared.repeatLast()
         return .result()
     }
 }
@@ -59,10 +59,10 @@ struct LiveTranslateShortcuts: AppShortcutsProvider {
             systemImageName: "waveform"
         )
         AppShortcut(
-            intent: SwapDirectionIntent(),
-            phrases: ["Đổi chiều \(.applicationName)", "Swap \(.applicationName)"],
-            shortTitle: "Đổi chiều dịch",
-            systemImageName: "arrow.left.arrow.right"
+            intent: RepeatLastIntent(),
+            phrases: ["Đọc lại \(.applicationName)", "Repeat \(.applicationName)"],
+            shortTitle: "Đọc lại câu dịch",
+            systemImageName: "arrow.counterclockwise"
         )
         AppShortcut(
             intent: StartTranslatingIntent(),

@@ -13,37 +13,51 @@ enum SpeechEngineError: LocalizedError {
     }
 }
 
-/// Continuous speech-to-text. Keeps the audio engine running (so it survives in background)
-/// and cuts the stream into utterances on silence, restarting recognition tasks as needed.
+/// Continuous speech-to-text in Vietnamese AND English at the same time, plus an owner-voice
+/// score per utterance. Keeps the audio engine running (so it survives in background) and cuts
+/// the stream into utterances on silence.
 final class SpeechEngine {
     var onPartial: ((String) -> Void)?
-    var onUtterance: ((String) -> Void)?
+    var onUtterance: ((HeardUtterance) -> Void)?
     var onError: ((String) -> Void)?
 
     var silenceTimeout: TimeInterval = 1.2
     var maxSegmentDuration: TimeInterval = 45
+
+    let speakerTracker = SpeakerTracker()
 
     private(set) var isRunning = false
     private(set) var isListening = false
 
     private let audioEngine = AVAudioEngine()
     private let silentPlayer = AVAudioPlayerNode()
-    private let tap = TapState()
-    private var recognizer: SFSpeechRecognizer?
-    private var task: SFSpeechRecognitionTask?
+    private let tap: TapState
+    private var recognizers: [Lang: SFSpeechRecognizer] = [:]
+    private var tasks: [Lang: SFSpeechRecognitionTask] = [:]
+    private var finishedLanguages: Set<Lang> = []
     private var generation = 0
-    private var latestText = ""
+    private var latest: [Lang: String] = [:]
     private var segmentStart = Date()
     private var silenceWork: DispatchWorkItem?
     private var consecutiveErrors = 0
     private var observers: [NSObjectProtocol] = []
 
+    init() {
+        tap = TapState(tracker: speakerTracker)
+    }
+
     deinit {
         observers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
-    func start(locale: Locale) throws {
-        try setRecognizer(locale: locale)
+    func start() throws {
+        for lang in Lang.allCases {
+            guard let recognizer = SFSpeechRecognizer(locale: lang.locale) else {
+                throw SpeechEngineError.recognizerUnavailable(lang.bcp47)
+            }
+            recognizer.defaultTaskHint = .dictation
+            recognizers[lang] = recognizer
+        }
         try activateSession()
         try startAudio()
         isRunning = true
@@ -56,7 +70,6 @@ final class SpeechEngine {
         isRunning = false
         isListening = false
         cancelSegment()
-        latestText = ""
         silentPlayer.stop()
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
@@ -72,34 +85,19 @@ final class SpeechEngine {
             beginSegment()
         } else {
             cancelSegment()
-            latestText = ""
         }
-    }
-
-    func setLocale(_ locale: Locale) throws {
-        try setRecognizer(locale: locale)
-        guard isRunning, isListening else { return }
-        cancelSegment()
-        latestText = ""
-        beginSegment()
     }
 
     // MARK: - Audio
 
-    private func setRecognizer(locale: Locale) throws {
-        guard let recognizer = SFSpeechRecognizer(locale: locale) else {
-            throw SpeechEngineError.recognizerUnavailable(locale.identifier)
-        }
-        recognizer.defaultTaskHint = .dictation
-        self.recognizer = recognizer
-    }
-
     private func activateSession() throws {
         let session = AVAudioSession.sharedInstance()
+        // No .defaultToSpeaker: without headphones private audio goes to the earpiece;
+        // VoiceOutput overrides to the loudspeaker when the other person must hear it.
         try session.setCategory(
             .playAndRecord,
             mode: .default,
-            options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker]
+            options: [.allowBluetooth, .allowBluetoothA2DP]
         )
         try session.setActive(true)
     }
@@ -184,44 +182,51 @@ final class SpeechEngine {
     // MARK: - Recognition segments
 
     private func beginSegment() {
-        guard isRunning, isListening, let recognizer else { return }
+        guard isRunning, isListening, !recognizers.isEmpty else { return }
         generation += 1
         let gen = generation
-
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        request.addsPunctuation = true
-        // Online-first: Apple's server recognizer is more accurate for Vietnamese.
-        request.requiresOnDeviceRecognition = false
-        tap.setRequest(request)
-        latestText = ""
+        latest = [:]
+        finishedLanguages = []
         segmentStart = Date()
+        speakerTracker.reset()
 
-        task = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            let text = result?.bestTranscription.formattedString
-            let isFinal = result?.isFinal ?? false
-            DispatchQueue.main.async {
-                self?.handle(generation: gen, text: text, isFinal: isFinal, error: error)
+        var requests: [SFSpeechAudioBufferRecognitionRequest] = []
+        for (lang, recognizer) in recognizers {
+            let request = SFSpeechAudioBufferRecognitionRequest()
+            request.shouldReportPartialResults = true
+            request.addsPunctuation = true
+            // Online-first: Apple's server recognizer is more accurate for Vietnamese.
+            request.requiresOnDeviceRecognition = false
+            requests.append(request)
+            tasks[lang] = recognizer.recognitionTask(with: request) { [weak self] result, error in
+                let text = result?.bestTranscription.formattedString
+                let isFinal = result?.isFinal ?? false
+                let failed = error != nil
+                DispatchQueue.main.async {
+                    self?.handle(generation: gen, lang: lang, text: text, isFinal: isFinal, failed: failed)
+                }
             }
         }
+        tap.setRequests(requests)
     }
 
     private func cancelSegment() {
         generation += 1
         silenceWork?.cancel()
         silenceWork = nil
-        tap.setRequest(nil)?.endAudio()
-        task?.cancel()
-        task = nil
+        tap.setRequests([]).forEach { $0.endAudio() }
+        tasks.values.forEach { $0.cancel() }
+        tasks.removeAll()
+        latest = [:]
     }
 
-    private func handle(generation gen: Int, text: String?, isFinal: Bool, error: Error?) {
+    private func handle(generation gen: Int, lang: Lang, text: String?, isFinal: Bool, failed: Bool) {
         guard gen == generation else { return }
 
-        if let text, !text.isEmpty, text != latestText {
+        if let text, !text.isEmpty, text != latest[lang] {
             consecutiveErrors = 0
-            latestText = text
-            onPartial?(text)
+            latest[lang] = text
+            onPartial?(displayText)
             if Date().timeIntervalSince(segmentStart) > maxSegmentDuration {
                 commit()
                 return
@@ -229,15 +234,31 @@ final class SpeechEngine {
             scheduleSilenceCommit()
         }
 
-        if isFinal {
+        guard isFinal || failed else { return }
+        finishedLanguages.insert(lang)
+        guard finishedLanguages.count == recognizers.count else { return }
+        if hasText {
             commit()
-        } else if error != nil {
-            if latestText.isEmpty {
-                restartAfterError()
-            } else {
-                commit()
-            }
+        } else {
+            restartAfterError()
         }
+    }
+
+    private var hasText: Bool {
+        latest.values.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
+    private var displayText: String {
+        let heard = currentUtterance(score: nil)
+        return LanguageHeuristics.detect(heard) == .vi ? heard.vietnamese : heard.english
+    }
+
+    private func currentUtterance(score: Float?) -> HeardUtterance {
+        HeardUtterance(
+            vietnamese: (latest[.vi] ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            english: (latest[.en] ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            ownerScore: score
+        )
     }
 
     private func scheduleSilenceCommit() {
@@ -248,11 +269,12 @@ final class SpeechEngine {
     }
 
     private func commit() {
-        let text = latestText.trimmingCharacters(in: .whitespacesAndNewlines)
-        latestText = ""
+        let utterance = currentUtterance(score: speakerTracker.currentScore())
         cancelSegment()
         beginSegment()
-        if !text.isEmpty { onUtterance?(text) }
+        if !utterance.vietnamese.isEmpty || !utterance.english.isEmpty {
+            onUtterance?(utterance)
+        }
     }
 
     private func restartAfterError() {
@@ -263,7 +285,7 @@ final class SpeechEngine {
         }
         let delay = min(0.3 * pow(2, Double(min(consecutiveErrors, 5))), 6)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self, self.task == nil else { return }
+            guard let self, self.tasks.isEmpty else { return }
             self.beginSegment()
         }
     }
@@ -272,21 +294,28 @@ final class SpeechEngine {
 /// Shared between the realtime audio thread (tap) and the main thread.
 private final class TapState {
     private let lock = NSLock()
-    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var requests: [SFSpeechAudioBufferRecognitionRequest] = []
+    private let tracker: SpeakerTracker
+
+    init(tracker: SpeakerTracker) {
+        self.tracker = tracker
+    }
 
     @discardableResult
-    func setRequest(_ newValue: SFSpeechAudioBufferRecognitionRequest?) -> SFSpeechAudioBufferRecognitionRequest? {
+    func setRequests(_ newValue: [SFSpeechAudioBufferRecognitionRequest]) -> [SFSpeechAudioBufferRecognitionRequest] {
         lock.lock()
         defer { lock.unlock() }
-        let old = request
-        request = newValue
+        let old = requests
+        requests = newValue
         return old
     }
 
     func append(_ buffer: AVAudioPCMBuffer) {
         lock.lock()
-        let current = request
+        let current = requests
         lock.unlock()
-        current?.append(buffer)
+        guard !current.isEmpty else { return }
+        current.forEach { $0.append(buffer) }
+        tracker.append(buffer)
     }
 }
