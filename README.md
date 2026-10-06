@@ -27,13 +27,22 @@ Không cần Mac: mỗi lần push lên `main`, GitHub Actions tải sherpa-onnx
 
 Build trên Mac: `bash scripts/fetch-vendor.sh && brew install xcodegen && xcodegen generate && open LiveTranslate.xcodeproj`.
 
-## Cài lên iPhone (Windows + AltStore)
+## Cài lên iPhone (Windows + SideStore — cập nhật từ xa, không cần chung Wi-Fi)
 
-1. Cài AltStore theo https://faq.altstore.io/altstore-classic/how-to-install-altstore-windows
-2. Trên iPhone, mở Safari vào trang Releases của repo → tải `LiveTranslate.ipa`.
-3. Mở AltStore → tab **My Apps** → nút **+** → chọn file `.ipa` vừa tải.
-4. Mở app → cho phép Micro + Nhận dạng lời nói.
-5. **Mỗi 7 ngày** app hết hạn: để PC bật AltServer cùng Wi-Fi, mở AltStore → **Refresh All**.
+Source (danh sách app cho SideStore/AltStore), CI tự cập nhật sau mỗi build:
+
+```
+https://raw.githubusercontent.com/datmaiba/live-translate/altstore/source.json
+```
+
+1. iPhone: cài **LocalDevVPN** từ App Store.
+2. Windows (đã có iTunes): tải **iloader** tại https://github.com/nab138/iloader/releases → cắm cáp iPhone → mở iloader → đăng nhập Apple ID → chọn iPhone → **Install SideStore (Stable)**.
+3. iPhone: Cài đặt › Cài đặt chung › Quản lý VPN & Thiết bị → Apple ID → **Tin cậy**; bật **Chế độ nhà phát triển** nếu chưa bật.
+4. Mở **LocalDevVPN** → **Connect**. Mở **SideStore** → đăng nhập cùng Apple ID → **My Apps** → chạm **7 DAYS** cạnh SideStore để làm mới.
+5. SideStore → **Sources** → **+** → dán URL source ở trên → mở **Live Dich** → **Install**.
+6. Bản mới: SideStore → **My Apps** → **Update** (nhớ bật LocalDevVPN). Gia hạn 7 ngày: **Refresh All** — không cần máy tính.
+
+Cách cũ (AltStore + AltServer trên Windows) vẫn dùng được nhưng cần iPhone và máy tính chung Wi-Fi.
 
 ## Cài Back Tap
 

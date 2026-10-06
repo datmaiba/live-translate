@@ -95,3 +95,20 @@ jobs:
           name: Live Dịch build ${{ github.run_number }}
           files: LiveTranslate.ipa
           make_latest: true
+
+      - name: Update AltStore/SideStore source
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Payload/LiveTranslate.app/Info.plist)
+          BUILD=${{ github.run_number }}
+          URL="https://github.com/${{ github.repository }}/releases/download/build-${BUILD}/LiveTranslate.ipa"
+          python3 scripts/make-source.py "$VERSION" "$BUILD" "$URL" LiveTranslate.ipa "$RUNNER_TEMP/source.json"
+          mkdir -p "$RUNNER_TEMP/source-branch" && cd "$RUNNER_TEMP/source-branch"
+          git init -q -b altstore
+          cp "$RUNNER_TEMP/source.json" source.json
+          git add source.json
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Source for build ${BUILD}"
+          git push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" altstore
+          echo "::notice::Source updated: https://raw.githubusercontent.com/${{ github.repository }}/altstore/source.json"
