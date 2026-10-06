@@ -269,12 +269,17 @@ final class SpeechEngine {
     }
 
     private func commit() {
-        let utterance = currentUtterance(score: speakerTracker.currentScore())
+        let utterance = currentUtterance(score: nil)
+        if !utterance.vietnamese.isEmpty || !utterance.english.isEmpty {
+            // Scored off the main thread; queued before the reset in beginSegment(), so it sees this utterance's audio.
+            speakerTracker.scoreCurrentUtterance { [weak self] score in
+                var scored = utterance
+                scored.ownerScore = score
+                self?.onUtterance?(scored)
+            }
+        }
         cancelSegment()
         beginSegment()
-        if !utterance.vietnamese.isEmpty || !utterance.english.isEmpty {
-            onUtterance?(utterance)
-        }
     }
 
     private func restartAfterError() {

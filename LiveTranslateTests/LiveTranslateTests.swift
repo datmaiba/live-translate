@@ -195,3 +195,34 @@ final class ClaudePromptsTests: XCTestCase {
         XCTAssertTrue(message.hasSuffix("Dat says (Vietnamese): Bao nhiêu tiền?"))
     }
 }
+
+final class VoiceMatcherTests: XCTestCase {
+    func testCosine() throws {
+        XCTAssertEqual(try XCTUnwrap(VoiceMatcher.cosine([1, 0], [1, 0])), 1, accuracy: 1e-6)
+        XCTAssertEqual(try XCTUnwrap(VoiceMatcher.cosine([1, 0], [0, 1])), 0, accuracy: 1e-6)
+        XCTAssertEqual(try XCTUnwrap(VoiceMatcher.cosine([1, 1], [-1, -1])), -1, accuracy: 1e-6)
+        XCTAssertNil(VoiceMatcher.cosine([1, 0], [1, 0, 0]))
+        XCTAssertNil(VoiceMatcher.cosine([0, 0], [1, 0]))
+    }
+
+    func testAverageIsNormalizedMeanDirection() throws {
+        let profile = try XCTUnwrap(VoiceMatcher.average([[2, 0], [0, 4]]))
+        XCTAssertEqual(profile[0], profile[1], accuracy: 1e-6)
+        XCTAssertEqual(profile[0] * profile[0] + profile[1] * profile[1], 1, accuracy: 1e-5)
+        XCTAssertNil(VoiceMatcher.average([]))
+        XCTAssertNil(VoiceMatcher.average([[1, 0], [1]]))
+    }
+
+    func testVoicedChunksDropsSilence() {
+        let loud = [Float](repeating: 0.2, count: 100)
+        let quiet = [Float](repeating: 0.001, count: 100)
+        let chunks = VoiceMatcher.voicedChunks(loud + quiet + loud + [0.5], chunkSize: 100, minRMS: 0.01)
+        XCTAssertEqual(chunks.count, 2)
+        XCTAssertTrue(VoiceMatcher.voicedChunks(loud, chunkSize: 200, minRMS: 0.01).isEmpty)
+    }
+
+    func testRMS() {
+        XCTAssertEqual(VoiceMatcher.rms([3, -3, 3, -3] as [Float]), 3, accuracy: 1e-6)
+        XCTAssertEqual(VoiceMatcher.rms([] as [Float]), 0)
+    }
+}

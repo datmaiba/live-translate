@@ -218,13 +218,20 @@ final class LiveTranslator: ObservableObject {
         append(Line(speaker: .me, language: .en, source: suggestion.en, translation: suggestion.vi, note: "Đã phát gợi ý"))
     }
 
+    var hasVoiceProfile: Bool { VoiceProfileStore.exists }
+
     /// Re-reads the voice profile and (re)starts voice ID.
     func reloadSpeakerID() {
         if let problem = speech.speakerTracker.configure() {
-            speakerStatus = "ℹ️ \(problem). Trước khi nói tiếng Anh, bấm \"🙋 Tôi nói tiếng Anh\"."
+            speakerStatus = "ℹ️ \(problem) — đang đoán theo ngôn ngữ. Trước khi nói tiếng Anh, bấm \"🙋 Tôi nói tiếng Anh\"."
         } else {
-            speakerStatus = "✅ Đang nhận diện giọng của bạn"
+            speakerStatus = "✅ Đang nhận diện giọng của bạn (ngưỡng \(Int(ownerThreshold * 100))%)"
         }
+    }
+
+    func deleteVoiceProfile() {
+        VoiceProfileStore.delete()
+        reloadSpeakerID()
     }
 
     /// The next English utterance (within 30 s) belongs to the owner → don't translate it.
@@ -259,9 +266,10 @@ final class LiveTranslator: ObservableObject {
 
     private func process(_ utterance: HeardUtterance) async {
         let heard = applyOwnerMarker(utterance)
+        let voiceNote = heard.ownerScore.map { " · giọng \(Int(($0 * 100).rounded()))%" } ?? ""
         switch TurnRouter.route(heard, ownerThreshold: Float(ownerThreshold)) {
         case let .ignore(reason, text, speaker, language):
-            append(Line(speaker: speaker, language: language, source: text, translation: "", note: reason))
+            append(Line(speaker: speaker, language: language, source: text, translation: "", note: reason + voiceNote))
 
         case .speakForMe(let vietnamese):
             let id = append(Line(speaker: .me, language: .vi, source: vietnamese, translation: "…", note: ""))
@@ -270,7 +278,7 @@ final class LiveTranslator: ObservableObject {
                 update(id) { $0.translation = ""; $0.note = "⚠️ \(engine)" }
                 return
             }
-            update(id) { $0.translation = english; $0.note = engine }
+            update(id) { $0.translation = english; $0.note = engine + voiceNote }
             if saveHistory { history.add(direction: .viToEn, source: vietnamese, translation: english) }
             if speakForOthers && state == .listening {
                 voice.speak(english, language: .en, rate: Float(speechRate), audience: .loud)
@@ -281,7 +289,7 @@ final class LiveTranslator: ObservableObject {
             let id = append(Line(speaker: .other, language: .en, source: english, translation: "…", note: ""))
             do {
                 let vietnamese = try await translateWithRetry(english, direction: .enToVi)
-                update(id) { $0.translation = vietnamese; $0.note = "Google" }
+                update(id) { $0.translation = vietnamese; $0.note = "Google" + voiceNote }
                 if saveHistory { history.add(direction: .enToVi, source: english, translation: vietnamese) }
                 if speakForMe && state == .listening {
                     voice.speak(vietnamese, language: .vi, rate: Float(speechRate), audience: .private)

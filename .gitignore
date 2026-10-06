@@ -8,3 +8,5 @@ Payload/
 xcuserdata/
 LiveTranslate/Info.plist
 *.tar
+Vendor/
+LiveTranslate/Resources/Models/

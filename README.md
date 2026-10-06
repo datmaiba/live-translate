@@ -4,8 +4,8 @@ App cá nhân, cài bằng AltStore (không qua App Store). Dịch hội thoại
 
 ## Tính năng
 
-- **Hội thoại tự động** (đoán theo ngôn ngữ; nhận diện giọng tự động sẽ có ở bản sau):
-  - Bạn sắp nói **tiếng Anh** → bấm **🙋 Tôi nói tiếng Anh** (hoặc gõ mặt lưng 3 lần) → app im lặng với câu đó.
+- **Hội thoại tự động** — nhận diện giọng bạn ngay trên máy (sherpa-onnx, không cần mạng/tài khoản); chưa đăng ký giọng thì đoán theo ngôn ngữ:
+  - Bạn nói **tiếng Anh** → app im lặng (khi cần chắc chắn: bấm **🙋 Tôi nói tiếng Anh** hoặc gõ mặt lưng 3 lần trước khi nói).
   - Bạn nói **tiếng Việt** → dịch sang tiếng Anh đơn giản (Claude) và **phát ra loa** cho người đối diện.
   - Người khác nói **tiếng Anh** → dịch tiếng Việt **cho riêng bạn** (tai nghe / áp tai / chỉ chữ) + Claude **gợi ý 3 câu trả lời**, chạm để app đọc to.
 - Không đeo tai nghe vẫn dùng được: chế độ "Áp tai" phát bản dịch qua loa thoại như nghe điện thoại.
@@ -17,14 +17,15 @@ App cá nhân, cài bằng AltStore (không qua App Store). Dịch hội thoại
 
 ## Thiết lập lần đầu (trong app › ⚙️)
 
-1. **Claude API key** (tuỳ chọn, để có tiếng Anh đơn giản + gợi ý trả lời): https://console.anthropic.com → API Keys → dán vào ô "Claude API key". Tính phí theo lượng dùng.
-2. Gắn phím tắt vào gõ mặt lưng (xem "Cài Back Tap" bên dưới).
+1. **Đăng ký giọng của tôi**: đọc to đoạn mẫu khoảng 20 giây ở chỗ yên tĩnh.
+2. **Claude API key** (tuỳ chọn, để có tiếng Anh đơn giản + gợi ý trả lời): https://console.anthropic.com → API Keys → dán vào ô "Claude API key". Tính phí theo lượng dùng.
+3. Gắn phím tắt vào gõ mặt lưng (xem "Cài Back Tap" bên dưới).
 
 ## Build
 
-Không cần Mac: mỗi lần push lên `main`, GitHub Actions (`.github/workflows/build.yml`) sẽ lint, chạy unit test, build `LiveTranslate.ipa` chưa ký và đăng lên **Releases**.
+Không cần Mac: mỗi lần push lên `main`, GitHub Actions tải sherpa-onnx + model nhận diện giọng (`scripts/fetch-vendor.sh`, có kiểm SHA-256), (`.github/workflows/build.yml`) sẽ lint, chạy unit test, build `LiveTranslate.ipa` chưa ký và đăng lên **Releases**.
 
-Build trên Mac: `brew install xcodegen && xcodegen generate && open LiveTranslate.xcodeproj`.
+Build trên Mac: `bash scripts/fetch-vendor.sh && brew install xcodegen && xcodegen generate && open LiveTranslate.xcodeproj`.
 
 ## Cài lên iPhone (Windows + AltStore)
 

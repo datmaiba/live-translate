@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var translator: LiveTranslator
     @Environment(\.dismiss) private var dismiss
+    @State private var showEnrollment = false
 
     var body: some View {
         NavigationStack {
@@ -26,20 +27,37 @@ struct SettingsView: View {
                     Button("Xong") { dismiss() }
                 }
             }
+            .sheet(isPresented: $showEnrollment) {
+                EnrollmentView()
+            }
+            .onChange(of: showEnrollment) {
+                if !showEnrollment { translator.reloadSpeakerID() }
+            }
         }
     }
 
     private var voiceSection: some View {
         Section {
             Text(translator.speakerStatus).font(.footnote)
+            Button(translator.hasVoiceProfile ? "Đăng ký lại giọng của tôi" : "Đăng ký giọng của tôi") {
+                translator.stopCompletely()
+                showEnrollment = true
+            }
+            if translator.hasVoiceProfile {
+                Button("Xoá giọng đã lưu", role: .destructive) { translator.deleteVoiceProfile() }
+            }
+            VStack(alignment: .leading) {
+                Text("Ngưỡng là giọng bạn: \(Int(translator.ownerThreshold * 100))%")
+                Slider(value: $translator.ownerThreshold, in: 0.2...0.9, step: 0.05)
+            }
         } header: {
             Text("Phân biệt giọng của bạn")
         } footer: {
             Text("""
-            App đoán theo ngôn ngữ: tiếng Việt = bạn (dịch sang tiếng Anh, phát loa), tiếng Anh = người khác \
-            (dịch cho bạn). Trước khi BẠN nói tiếng Anh, bấm "🙋 Tôi nói tiếng Anh" trên màn hình chính \
-            hoặc dùng phím tắt "Tôi nói tiếng Anh" (gắn vào gõ mặt lưng 3 lần) — câu tiếng Anh kế tiếp \
-            trong 30 giây sẽ không bị dịch. Nhận diện giọng tự động sẽ có ở bản sau.
+            Nhận diện chạy ngay trên iPhone, không cần mạng hay tài khoản. Mỗi câu trên màn hình có "giọng xx%": \
+            nếu người khác hay bị nhận là bạn → tăng ngưỡng; nếu bạn hay bị nhận là người khác → giảm ngưỡng. \
+            Chưa đăng ký giọng thì app đoán theo ngôn ngữ (tiếng Việt = bạn). \
+            Nút "🙋 Tôi nói tiếng Anh" luôn dùng được khi cần chắc chắn.
             """)
         }
     }
