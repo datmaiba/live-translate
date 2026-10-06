@@ -4,8 +4,8 @@ App cá nhân, cài bằng AltStore (không qua App Store). Dịch hội thoại
 
 ## Tính năng
 
-- **Hội thoại tự động** (nhận diện giọng bạn bằng Picovoice Eagle):
-  - Bạn nói **tiếng Anh** → app im lặng.
+- **Hội thoại tự động** (đoán theo ngôn ngữ; nhận diện giọng tự động sẽ có ở bản sau):
+  - Bạn sắp nói **tiếng Anh** → bấm **🙋 Tôi nói tiếng Anh** (hoặc gõ mặt lưng 3 lần) → app im lặng với câu đó.
   - Bạn nói **tiếng Việt** → dịch sang tiếng Anh đơn giản (Claude) và **phát ra loa** cho người đối diện.
   - Người khác nói **tiếng Anh** → dịch tiếng Việt **cho riêng bạn** (tai nghe / áp tai / chỉ chữ) + Claude **gợi ý 3 câu trả lời**, chạm để app đọc to.
 - Không đeo tai nghe vẫn dùng được: chế độ "Áp tai" phát bản dịch qua loa thoại như nghe điện thoại.
@@ -17,9 +17,8 @@ App cá nhân, cài bằng AltStore (không qua App Store). Dịch hội thoại
 
 ## Thiết lập lần đầu (trong app › ⚙️)
 
-1. **Picovoice AccessKey**: đăng ký tại https://console.picovoice.ai → copy AccessKey → dán vào ô "Picovoice AccessKey".
-2. Bấm **Đăng ký giọng của tôi**, đọc to đoạn văn mẫu tới 100% (chỗ yên tĩnh).
-3. **Claude API key** (tuỳ chọn, để có tiếng Anh đơn giản + gợi ý trả lời): https://console.anthropic.com → API Keys → dán vào ô "Claude API key". Tính phí theo lượng dùng.
+1. **Claude API key** (tuỳ chọn, để có tiếng Anh đơn giản + gợi ý trả lời): https://console.anthropic.com → API Keys → dán vào ô "Claude API key". Tính phí theo lượng dùng.
+2. Gắn phím tắt vào gõ mặt lưng (xem "Cài Back Tap" bên dưới).
 
 ## Build
 
@@ -37,8 +36,8 @@ Build trên Mac: `brew install xcodegen && xcodegen generate && open LiveTransla
 
 ## Cài Back Tap
 
-1. App **Phím tắt** → **+** → Thêm tác vụ → tìm "Live Dịch" → chọn **Bật/Tắt dịch** → lưu.
-2. **Cài đặt › Trợ năng › Cảm ứng › Chạm vào mặt sau › Chạm hai lần** → chọn phím tắt vừa tạo.
+1. App **Phím tắt** → **+** → Thêm tác vụ → tìm "Live Dịch" → chọn **Bật/Tắt dịch** → lưu. Làm thêm một phím tắt **Tôi nói tiếng Anh**.
+2. **Cài đặt › Trợ năng › Cảm ứng › Chạm vào mặt sau**: **Chạm hai lần** → "Bật/Tắt dịch", **Chạm ba lần** → "Tôi nói tiếng Anh".
 
 ## Giới hạn của iOS
 

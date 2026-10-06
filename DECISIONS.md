@@ -19,3 +19,4 @@
 | D-015 | Claude | Dịch VI → EN đơn giản (A2–B1) + gợi ý 3 câu trả lời, chạm để đọc to. Mặc định Haiku 4.5 (nhanh), chọn được Sonnet 5.5. Key người dùng nhập, lưu Keychain; không có key → Google | Yêu cầu "trả lời thông minh hơn" + "từ ngữ đơn giản" | user | 2026-10-06 |
 | D-016 | Đầu ra khi không có tai nghe | Mặc định "Áp tai" (loa thoại); tiếng Anh cho người nghe luôn ra loa ngoài, mic tạm tắt lúc phát | Kín đáo cho bạn, rõ cho người nghe | auto | 2026-10-06 |
 | D-017 | AirPods bấm 2 lần | Đọc lại câu dịch gần nhất (thay cho "đổi chiều", không còn cần) | Chiều dịch giờ tự động | auto | 2026-10-06 |
+| D-018 | Thay Picovoice (bắt buộc email công ty) | C: làm B trước (nút/phím tắt "Tôi nói tiếng Anh", câu EN kế tiếp trong 30s không dịch), A sau (sherpa-onnx speaker embedding, offline, không tài khoản). Gỡ Eagle | Có app dùng ngay; nhận diện tự động cần thử trên máy | user | 2026-10-06 |

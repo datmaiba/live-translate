@@ -39,6 +39,19 @@ struct RepeatLastIntent: AppIntent {
     }
 }
 
+/// Bind to Back Tap (triple) — marks the next English sentence as the owner's.
+struct MarkOwnerEnglishIntent: AppIntent {
+    static var title: LocalizedStringResource = "Tôi nói tiếng Anh"
+    static var description = IntentDescription("Câu tiếng Anh kế tiếp là của bạn, không dịch lại.")
+    static var openAppWhenRun: Bool = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        LiveTranslator.shared.markOwnerSpeakingEnglish()
+        return .result()
+    }
+}
+
 struct StartTranslatingIntent: AppIntent {
     static var title: LocalizedStringResource = "Mở và bắt đầu dịch"
     static var openAppWhenRun: Bool = true
@@ -63,6 +76,12 @@ struct LiveTranslateShortcuts: AppShortcutsProvider {
             phrases: ["Đọc lại \(.applicationName)", "Repeat \(.applicationName)"],
             shortTitle: "Đọc lại câu dịch",
             systemImageName: "arrow.counterclockwise"
+        )
+        AppShortcut(
+            intent: MarkOwnerEnglishIntent(),
+            phrases: ["Tôi nói tiếng Anh \(.applicationName)", "My English \(.applicationName)"],
+            shortTitle: "Tôi nói tiếng Anh",
+            systemImageName: "person.wave.2"
         )
         AppShortcut(
             intent: StartTranslatingIntent(),

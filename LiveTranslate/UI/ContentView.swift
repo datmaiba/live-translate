@@ -88,10 +88,9 @@ struct ContentView: View {
                 .font(.headline)
             Text("""
             • Bạn nói tiếng Việt → app nói tiếng Anh ra loa cho người nghe.
-            • Bạn nói tiếng Anh → app im lặng.
+            • Bạn sắp nói tiếng Anh → bấm "🙋 Tôi nói tiếng Anh" trước, app sẽ im lặng.
             • Người khác nói tiếng Anh → app dịch tiếng Việt cho riêng bạn + gợi ý câu trả lời. Chạm gợi ý để app đọc to.
             • Khoá màn hình / mở app khác vẫn chạy. AirPods: bấm 1 lần = bật/tạm dừng, 2 lần = đọc lại.
-            • Lần đầu: vào ⚙️ đăng ký giọng của bạn để app phân biệt bạn với người khác.
             """)
             .font(.subheadline)
             .foregroundStyle(.secondary)
@@ -109,6 +108,7 @@ struct ContentView: View {
                     .padding(.horizontal)
                     .onTapGesture { translator.errorMessage = nil }
             }
+            ownerEnglishButton
             HStack(spacing: 28) {
                 Button {
                     translator.clearScreen()
@@ -142,6 +142,31 @@ struct ContentView: View {
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity)
         .background(Theme.surface)
+    }
+
+    private var ownerEnglishButton: some View {
+        Button {
+            if translator.ownerEnglishArmed {
+                translator.cancelOwnerEnglish()
+            } else {
+                translator.markOwnerSpeakingEnglish()
+            }
+        } label: {
+            Label(
+                translator.ownerEnglishArmed ? "Đang chờ câu tiếng Anh của bạn… (chạm để huỷ)" : "🙋 Tôi nói tiếng Anh",
+                systemImage: translator.ownerEnglishArmed ? "hourglass" : "person.wave.2"
+            )
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(translator.ownerEnglishArmed ? Color.orange.opacity(0.35) : Theme.chip)
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .disabled(translator.state != .listening)
     }
 
     private var mainIcon: String {

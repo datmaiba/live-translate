@@ -4,7 +4,6 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var translator: LiveTranslator
     @Environment(\.dismiss) private var dismiss
-    @State private var showEnrollment = false
 
     var body: some View {
         NavigationStack {
@@ -27,41 +26,20 @@ struct SettingsView: View {
                     Button("Xong") { dismiss() }
                 }
             }
-            .sheet(isPresented: $showEnrollment) {
-                EnrollmentView(accessKey: translator.picovoiceKey)
-            }
-            .onChange(of: showEnrollment) {
-                if !showEnrollment { translator.reloadSpeakerID() }
-            }
         }
     }
 
     private var voiceSection: some View {
         Section {
             Text(translator.speakerStatus).font(.footnote)
-            SecureField("Picovoice AccessKey", text: $translator.picovoiceKey)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .onSubmit { translator.reloadSpeakerID() }
-            Button(translator.hasVoiceProfile ? "Đăng ký lại giọng của tôi" : "Đăng ký giọng của tôi") {
-                translator.stopCompletely()
-                showEnrollment = true
-            }
-            .disabled(translator.picovoiceKey.isEmpty)
-            if translator.hasVoiceProfile {
-                Button("Xoá giọng đã lưu", role: .destructive) { translator.deleteVoiceProfile() }
-            }
-            VStack(alignment: .leading) {
-                Text("Độ chắc chắn là giọng bạn: \(Int(translator.ownerThreshold * 100))%")
-                Slider(value: $translator.ownerThreshold, in: 0.2...0.9, step: 0.05)
-            }
         } header: {
-            Text("Nhận diện giọng của bạn")
+            Text("Phân biệt giọng của bạn")
         } footer: {
             Text("""
-            Lấy AccessKey miễn phí tại console.picovoice.ai. Nếu app hay nhầm người khác là bạn → tăng %. \
-            Nếu hay nhầm bạn là người khác → giảm %. Chưa đăng ký giọng thì app đoán theo ngôn ngữ: \
-            tiếng Việt = bạn, tiếng Anh = người khác.
+            App đoán theo ngôn ngữ: tiếng Việt = bạn (dịch sang tiếng Anh, phát loa), tiếng Anh = người khác \
+            (dịch cho bạn). Trước khi BẠN nói tiếng Anh, bấm "🙋 Tôi nói tiếng Anh" trên màn hình chính \
+            hoặc dùng phím tắt "Tôi nói tiếng Anh" (gắn vào gõ mặt lưng 3 lần) — câu tiếng Anh kế tiếp \
+            trong 30 giây sẽ không bị dịch. Nhận diện giọng tự động sẽ có ở bản sau.
             """)
         }
     }
@@ -123,7 +101,8 @@ struct SettingsView: View {
             3. AirPods: bấm 1 lần = bật/tạm dừng, bấm 2 lần = đọc lại câu dịch.
             4. Gõ mặt lưng: app Phím tắt › + › thêm tác vụ "Bật/Tắt dịch" của Live Dịch → lưu. \
             Rồi Cài đặt › Trợ năng › Cảm ứng › Chạm vào mặt sau › Chạm hai lần › chọn phím tắt đó.
-            5. Chấm cam (micro) luôn hiện khi app nghe — iOS bắt buộc, không ẩn được.
+            5. Tương tự, gắn phím tắt "Tôi nói tiếng Anh" vào Chạm ba lần — gõ trước khi bạn nói tiếng Anh.
+            6. Chấm cam (micro) luôn hiện khi app nghe — iOS bắt buộc, không ẩn được.
             """)
             .font(.footnote)
         }

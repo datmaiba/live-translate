@@ -6,8 +6,10 @@ struct HeardUtterance: Equatable {
     var vietnamese: String
     /// Transcript from the English recognizer.
     var english: String
-    /// Average Eagle similarity to the owner's voice, `nil` when no profile / not enough voice.
+    /// Similarity to the owner's voice in [0, 1], `nil` when unknown.
     var ownerScore: Float?
+    /// When the utterance finished (used to match the manual "I'm speaking English" marker).
+    var endedAt = Date()
 }
 
 enum Speaker: String, Codable, Equatable {
@@ -50,7 +52,7 @@ enum LanguageHeuristics {
 }
 
 enum TurnRouter {
-    /// - Parameter ownerThreshold: Eagle score at or above which the voice is considered the owner's.
+    /// - Parameter ownerThreshold: voice-ID score at or above which the voice is considered the owner's.
     static func route(_ heard: HeardUtterance, ownerThreshold: Float) -> TurnAction {
         guard let language = LanguageHeuristics.detect(heard) else {
             return .ignore(reason: "Không rõ", text: heard.english, speaker: .other, language: .en)

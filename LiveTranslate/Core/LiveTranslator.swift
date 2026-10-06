@@ -33,6 +33,8 @@ final class LiveTranslator: ObservableObject {
     @Published private(set) var partial = ""
     @Published private(set) var lines: [Line] = []
     @Published private(set) var speakerStatus = ""
+    /// The owner announced (button / Shortcut) that the next English utterance is theirs.
+    @Published private(set) var ownerEnglishArmed = false
     @Published var errorMessage: String?
 
     @Published var speakForOthers: Bool { didSet { defaults.set(speakForOthers, forKey: Keys.speakForOthers) } }
@@ -52,11 +54,6 @@ final class LiveTranslator: ObservableObject {
     @Published var claudeKey: String {
         didSet { KeychainStore.set(claudeKey.trimmingCharacters(in: .whitespacesAndNewlines), for: Keys.claudeKey) }
     }
-    @Published var picovoiceKey: String {
-        didSet {
-            KeychainStore.set(picovoiceKey.trimmingCharacters(in: .whitespacesAndNewlines), for: Keys.picovoiceKey)
-        }
-    }
 
     let history = HistoryStore()
 
@@ -71,7 +68,6 @@ final class LiveTranslator: ObservableObject {
         static let privateOutput = "privateOutput"
         static let model = "claudeModel"
         static let claudeKey = "claudeApiKey"
-        static let picovoiceKey = "picovoiceAccessKey"
     }
 
     private let defaults = UserDefaults.standard
@@ -80,12 +76,12 @@ final class LiveTranslator: ObservableObject {
     private let nowPlaying = NowPlayingController()
     private let google = GoogleTranslator()
     private let inbox: AsyncStream<HeardUtterance>.Continuation
+    private var ownerEnglishArmedAt: Date?
+    private static let ownerEnglishWindow: TimeInterval = 30
 
     private var claude: ClaudeClient {
         ClaudeClient(apiKey: claudeKey.trimmingCharacters(in: .whitespacesAndNewlines), model: claudeModel)
     }
-
-    var hasVoiceProfile: Bool { VoiceProfileStore.exists }
 
     private init() {
         defaults.register(defaults: [
@@ -109,7 +105,6 @@ final class LiveTranslator: ObservableObject {
         privateOutput = PrivateOutput(rawValue: defaults.string(forKey: Keys.privateOutput) ?? "") ?? .earpiece
         claudeModel = ClaudeModel(rawValue: defaults.string(forKey: Keys.model) ?? "") ?? .haiku
         claudeKey = KeychainStore.get(Keys.claudeKey) ?? ""
-        picovoiceKey = KeychainStore.get(Keys.picovoiceKey) ?? ""
 
         let (stream, inbox) = AsyncStream<HeardUtterance>.makeStream()
         self.inbox = inbox
@@ -223,23 +218,47 @@ final class LiveTranslator: ObservableObject {
         append(Line(speaker: .me, language: .en, source: suggestion.en, translation: suggestion.vi, note: "Đã phát gợi ý"))
     }
 
-    /// Re-reads keys/profile and (re)starts Eagle.
+    /// Re-reads the voice profile and (re)starts voice ID.
     func reloadSpeakerID() {
-        if let problem = speech.speakerTracker.configure(accessKey: picovoiceKey.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            speakerStatus = "⚠️ \(problem) — đang đoán theo ngôn ngữ"
+        if let problem = speech.speakerTracker.configure() {
+            speakerStatus = "ℹ️ \(problem). Trước khi nói tiếng Anh, bấm \"🙋 Tôi nói tiếng Anh\"."
         } else {
             speakerStatus = "✅ Đang nhận diện giọng của bạn"
         }
     }
 
-    func deleteVoiceProfile() {
-        VoiceProfileStore.delete()
-        reloadSpeakerID()
+    /// The next English utterance (within 30 s) belongs to the owner → don't translate it.
+    func markOwnerSpeakingEnglish() {
+        ownerEnglishArmed = true
+        ownerEnglishArmedAt = Date()
+        AudioServicesPlaySystemSound(1519)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.ownerEnglishWindow) { [weak self] in
+            guard let self, let armedAt = self.ownerEnglishArmedAt,
+                  Date().timeIntervalSince(armedAt) >= Self.ownerEnglishWindow else { return }
+            self.ownerEnglishArmed = false
+            self.ownerEnglishArmedAt = nil
+        }
+    }
+
+    func cancelOwnerEnglish() {
+        ownerEnglishArmed = false
+        ownerEnglishArmedAt = nil
+    }
+
+    /// Applies the manual "I'm speaking English" marker to an utterance that ended after the tap.
+    private func applyOwnerMarker(_ heard: HeardUtterance) -> HeardUtterance {
+        guard ownerEnglishArmed, let armedAt = ownerEnglishArmedAt, heard.endedAt >= armedAt,
+              LanguageHeuristics.detect(heard) == .en else { return heard }
+        var marked = heard
+        marked.ownerScore = 1
+        cancelOwnerEnglish()
+        return marked
     }
 
     // MARK: - Pipeline
 
-    private func process(_ heard: HeardUtterance) async {
+    private func process(_ utterance: HeardUtterance) async {
+        let heard = applyOwnerMarker(utterance)
         switch TurnRouter.route(heard, ownerThreshold: Float(ownerThreshold)) {
         case let .ignore(reason, text, speaker, language):
             append(Line(speaker: speaker, language: language, source: text, translation: "", note: reason))
