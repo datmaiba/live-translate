@@ -26,8 +26,11 @@ struct ContentView: View {
             .sheet(isPresented: $showHistory) {
                 HistoryView(history: translator.history)
             }
-            .sheet(isPresented: $showSettings, onDismiss: { translator.reloadSpeakerID() }) {
+            .sheet(isPresented: $showSettings) {
                 SettingsView().environmentObject(translator)
+            }
+            .onChange(of: showSettings) {
+                if !showSettings { translator.reloadSpeakerID() }
             }
         }
     }

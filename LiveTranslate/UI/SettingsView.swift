@@ -27,8 +27,11 @@ struct SettingsView: View {
                     Button("Xong") { dismiss() }
                 }
             }
-            .sheet(isPresented: $showEnrollment, onDismiss: { translator.reloadSpeakerID() }) {
+            .sheet(isPresented: $showEnrollment) {
                 EnrollmentView(accessKey: translator.picovoiceKey)
+            }
+            .onChange(of: showEnrollment) {
+                if !showEnrollment { translator.reloadSpeakerID() }
             }
         }
     }
