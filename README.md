@@ -37,7 +37,7 @@ Build trên Mac: `bash scripts/fetch-vendor.sh && brew install xcodegen && xcode
 
 ## Cài Back Tap
 
-1. App **Phím tắt** → **+** → Thêm tác vụ → tìm "Live Dịch" → chọn **Bật/Tắt dịch** → lưu. Làm thêm một phím tắt **Tôi nói tiếng Anh**.
+1. App **Phím tắt** → **+** → Thêm tác vụ → tìm "Live Dich" → chọn **Bật/Tắt dịch** → lưu. Làm thêm một phím tắt **Tôi nói tiếng Anh**.
 2. **Cài đặt › Trợ năng › Cảm ứng › Chạm vào mặt sau**: **Chạm hai lần** → "Bật/Tắt dịch", **Chạm ba lần** → "Tôi nói tiếng Anh".
 
 ## Giới hạn của iOS

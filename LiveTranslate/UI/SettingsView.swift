@@ -117,7 +117,7 @@ struct SettingsView: View {
             1. Bấm micro một lần trong app → khoá màn hình / mở app khác, app vẫn chạy.
             2. Câu dịch mới nhất hiện ở thẻ phát nhạc trên màn hình khoá.
             3. AirPods: bấm 1 lần = bật/tạm dừng, bấm 2 lần = đọc lại câu dịch.
-            4. Gõ mặt lưng: app Phím tắt › + › thêm tác vụ "Bật/Tắt dịch" của Live Dịch → lưu. \
+            4. Gõ mặt lưng: app Phím tắt › + › thêm tác vụ "Bật/Tắt dịch" của Live Dich → lưu. \
             Rồi Cài đặt › Trợ năng › Cảm ứng › Chạm vào mặt sau › Chạm hai lần › chọn phím tắt đó.
             5. Tương tự, gắn phím tắt "Tôi nói tiếng Anh" vào Chạm ba lần — gõ trước khi bạn nói tiếng Anh.
             6. Chấm cam (micro) luôn hiện khi app nghe — iOS bắt buộc, không ẩn được.

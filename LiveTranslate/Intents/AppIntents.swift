@@ -4,7 +4,7 @@ enum IntentFailure: Error, CustomLocalizedStringResourceConvertible {
     case needsApp
 
     var localizedStringResource: LocalizedStringResource {
-        "Mở Live Dịch và bấm Bắt đầu một lần trước."
+        "Mở Live Dich và bấm Bắt đầu một lần trước."
     }
 }
 

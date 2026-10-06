@@ -146,7 +146,7 @@ final class LiveTranslator: ObservableObject {
         case .idle: break
         }
         guard await requestPermissions() else {
-            errorMessage = "Cần quyền Micro và Nhận dạng lời nói: Cài đặt › Live Dịch."
+            errorMessage = "Cần quyền Micro và Nhận dạng lời nói: Cài đặt › Live Dich."
             return
         }
         do {
