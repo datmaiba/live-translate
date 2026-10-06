@@ -1,0 +1,39 @@
+{
+  "name": "Live Dich",
+  "identifier": "com.datmaiba.livetranslate.source",
+  "subtitle": "Dịch trực tiếp Việt ⇄ Anh",
+  "website": "https://github.com/datmaiba/live-translate",
+  "iconURL": "https://raw.githubusercontent.com/datmaiba/live-translate/main/LiveTranslate/Resources/Assets.xcassets/AppIcon.appiconset/icon.png",
+  "tintColor": "#3399FF",
+  "apps": [
+    {
+      "name": "Live Dich",
+      "bundleIdentifier": "com.datmaiba.livetranslate",
+      "developerName": "Mai Ba Dat",
+      "subtitle": "Dịch hội thoại Việt ⇄ Anh, chạy nền",
+      "localizedDescription": "Bạn nói tiếng Việt → phát tiếng Anh ra loa. Người khác nói tiếng Anh → dịch tiếng Việt cho riêng bạn, kèm gợi ý câu trả lời.",
+      "iconURL": "https://raw.githubusercontent.com/datmaiba/live-translate/main/LiveTranslate/Resources/Assets.xcassets/AppIcon.appiconset/icon.png",
+      "tintColor": "#3399FF",
+      "category": "utilities",
+      "versions": [
+        {
+          "version": "1.3.1",
+          "buildVersion": "9",
+          "date": "2026-10-06T18:18:53Z",
+          "localizedDescription": "Build 9",
+          "downloadURL": "https://github.com/datmaiba/live-translate/releases/download/build-9/LiveTranslate.ipa",
+          "size": 35417410,
+          "minOSVersion": "17.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSMicrophoneUsageDescription": "Live Dịch cần micro để nghe và dịch hội thoại.",
+          "NSSpeechRecognitionUsageDescription": "Live Dịch chuyển giọng nói thành chữ để dịch Việt ⇄ Anh."
+        }
+      }
+    }
+  ],
+  "news": []
+}
