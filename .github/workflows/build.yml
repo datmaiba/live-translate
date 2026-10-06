@@ -30,7 +30,7 @@ jobs:
         run: brew install xcodegen swiftlint
 
       - name: Lint
-        run: swiftlint lint --strict
+        run: swiftlint lint --strict --reporter github-actions-logging
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -52,7 +52,8 @@ jobs:
             -project LiveTranslate.xcodeproj \
             -scheme LiveTranslate \
             -destination "id=$UDID" \
-            CODE_SIGNING_ALLOWED=NO | tee test.log | grep -E "error:|warning: .*LiveTranslate/|Test Case .*(passed|failed)|Executed|TEST (SUCCEEDED|FAILED)" || (tail -80 test.log; exit 1)
+            CODE_SIGNING_ALLOWED=NO | tee test.log | grep -E "error:|warning: .*LiveTranslate/|Test Case .*(passed|failed)|Executed|TEST (SUCCEEDED|FAILED)" || (grep -E "error:|failed|FAILED" test.log | head -40 | sed 's/^/::error::/'; exit 1)
+          grep -E "Executed [0-9]+ tests" test.log | tail -1 | sed 's/^/::notice::/'
 
       - name: Build unsigned IPA
         run: |
@@ -65,7 +66,7 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }} | tee build.log | grep -E "error:|warning: .*LiveTranslate/|BUILD (SUCCEEDED|FAILED)" || (tail -80 build.log; exit 1)
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} | tee build.log | grep -E "error:|warning: .*LiveTranslate/|BUILD (SUCCEEDED|FAILED)" || (grep -E "error:" build.log | head -40 | sed 's/^/::error::/'; exit 1)
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/LiveTranslate.app Payload/
           zip -qry LiveTranslate.ipa Payload
