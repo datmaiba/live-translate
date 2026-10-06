@@ -1,0 +1,85 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          XCODE=$(ls -d /Applications/Xcode_*.app | grep -v beta | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Install tools
+        run: brew install xcodegen swiftlint
+
+      - name: Lint
+        run: swiftlint lint --strict
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Unit tests (simulator)
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          ios = sorted([k for k in data if "iOS" in k], key=lambda k: [int(x) for x in k.split("iOS-")[1].split("-")])
+          for runtime in reversed(ios):
+              for d in data[runtime]:
+                  if d["name"].startswith("iPhone"):
+                      print(d["udid"]); sys.exit(0)
+          ')
+          echo "Simulator: $UDID"
+          set -o pipefail
+          xcodebuild test \
+            -project LiveTranslate.xcodeproj \
+            -scheme LiveTranslate \
+            -destination "id=$UDID" \
+            CODE_SIGNING_ALLOWED=NO | tee test.log | grep -E "error:|warning: .*LiveTranslate/|Test Case .*(passed|failed)|Executed|TEST (SUCCEEDED|FAILED)" || (tail -80 test.log; exit 1)
+
+      - name: Build unsigned IPA
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project LiveTranslate.xcodeproj \
+            -scheme LiveTranslate \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} | tee build.log | grep -E "error:|warning: .*LiveTranslate/|BUILD (SUCCEEDED|FAILED)" || (tail -80 build.log; exit 1)
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/LiveTranslate.app Payload/
+          zip -qry LiveTranslate.ipa Payload
+          ls -lh LiveTranslate.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LiveTranslate-ipa
+          path: LiveTranslate.ipa
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Live Dịch build ${{ github.run_number }}
+          files: LiveTranslate.ipa
+          make_latest: true

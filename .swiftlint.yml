@@ -1,0 +1,13 @@
+included:
+  - LiveTranslate
+  - LiveTranslateTests
+disabled_rules:
+  - trailing_comma
+  - todo
+  - identifier_name
+line_length:
+  warning: 160
+  error: 200
+type_body_length: 400
+file_length: 600
+function_body_length: 80

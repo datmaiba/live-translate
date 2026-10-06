@@ -1,0 +1,9 @@
+*.xcodeproj
+build/
+DerivedData/
+Payload/
+*.ipa
+*.log
+.DS_Store
+xcuserdata/
+LiveTranslate/Info.plist
